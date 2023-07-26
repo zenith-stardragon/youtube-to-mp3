@@ -3,34 +3,50 @@ from pytube import YouTube
 from moviepy.editor import AudioFileClip
 import os
 import base64
+import re
 
-def convert_and_download(url, on_progress):
-    video = YouTube(url, on_progress_callback=on_progress)
+def convert_and_download(url):
+    video = YouTube(url)
     stream = video.streams.get_highest_resolution()
     video_path = stream.download(filename=video.title)
     audio = AudioFileClip(video_path)
     audio_path = video.title + '.mp3'
     audio.write_audiofile(audio_path)
-    return audio_path
+    return audio_path, video.title
 
-def update_progress(stream, chunk, bytes_remaining):
-    total_size = stream.filesize
-    bytes_downloaded = total_size - bytes_remaining
-    percentage = bytes_downloaded / total_size  # this is now a fraction from 0.0 to 1.0
-    progress_bar.progress(percentage)
+def convert_video_and_download(url, resolution):
+    video = YouTube(url)
+    stream = video.streams.filter(res=resolution, progressive=True).first()
+    if not stream:
+        raise Exception(f"No stream available with resolution {resolution}")
+    video_path = stream.download(filename=video.title)
+    return video_path, video.title
 
-def create_download_link(audio_path, filename = "download.mp3"):  
-    with open(audio_path, 'rb') as f:
+def create_download_link(path, filename, extension):  
+    with open(path, 'rb') as f:
         bytes = f.read()
         b64 = base64.b64encode(bytes).decode()
-        href = f'<a href="data:file/mp3;base64,{b64}" download="{filename}">Click Here to Download</a>'
+        href = f'<a href="data:file/{extension};base64,{b64}" download="{filename}.{extension}">Click Here to Download</a>'
         return href
 
-st.title('YouTube to MP3 Converter')
-url = st.text_input('Enter YouTube Video URL')
-convert_button = st.button('Convert')
-progress_bar = st.progress(0)
+def is_youtube_url(url):
+    youtube_regex = r"(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})"
+    youtube_regex_match = re.match(youtube_regex, url)
+    return bool(youtube_regex_match)
 
-if convert_button:
-    audio_path = convert_and_download(url, update_progress)
-    st.markdown(create_download_link(audio_path), unsafe_allow_html=True)
+st.title('YouTube Downloader')
+url = st.text_input('Enter YouTube Video URL')
+resolution = st.selectbox('Select Resolution', ('720p', '480p', '360p', '240p', '144p'))
+convert_audio_button = st.button('Convert to MP3')
+convert_video_button = st.button('Convert to MP4')
+
+if convert_audio_button or convert_video_button:
+    if is_youtube_url(url):
+        if convert_audio_button:
+            audio_path, title = convert_and_download(url)
+            st.markdown(create_download_link(audio_path, title, "mp3"), unsafe_allow_html=True)
+        elif convert_video_button:
+            video_path, title = convert_video_and_download(url, resolution)
+            st.markdown(create_download_link(video_path, title, "mp4"), unsafe_allow_html=True)
+    else:
+        st.error("Invalid YouTube URL")
